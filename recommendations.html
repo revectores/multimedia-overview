@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>兴趣推荐</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell recommendations-shell">
+      <header class="hero recommendation-hero">
+        <div>
+          <p class="eyebrow">Taste Profile</p>
+          <h1>基于片单的兴趣推荐</h1>
+          <p class="hero-copy">
+            根据你已经加入片单的电影和电视剧，结合观看状态、题材、地区和相似作品生成推荐。
+          </p>
+          <p class="helper-text">
+            <a href="./index.html">返回主面板</a>
+          </p>
+        </div>
+        <section class="token-panel">
+          <p class="field-label">推荐说明</p>
+          <p class="helper-text">
+            优先参考“已完成”和“进行中”条目；已在片单中的作品会自动排除。
+          </p>
+          <div id="profileStats" class="library-stats"></div>
+        </section>
+      </header>
+
+      <main class="recommendation-layout">
+        <section class="panel recommendation-sidebar">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Filters</p>
+              <h2>推荐设置</h2>
+            </div>
+          </div>
+          <div class="filters recommendation-filters">
+            <select id="mediaTypeFilter" aria-label="推荐类型">
+              <option value="all">电影 + 电视剧</option>
+              <option value="movie">只看电影</option>
+              <option value="tv">只看电视剧</option>
+            </select>
+            <select id="sourceFilter" aria-label="推荐来源">
+              <option value="all">全部来源</option>
+              <option value="similar">相似作品</option>
+              <option value="taste">兴趣画像</option>
+            </select>
+            <button id="refreshBtn" class="primary-btn" type="button">刷新推荐</button>
+          </div>
+
+          <div class="taste-panel">
+            <p class="field-label">当前兴趣画像</p>
+            <div id="tasteSummary" class="taste-summary"></div>
+          </div>
+        </section>
+
+        <section class="panel recommendation-main">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Recommendations</p>
+              <h2>你可能会喜欢</h2>
+            </div>
+          </div>
+          <div id="recommendationMessage" class="status-line"></div>
+          <div id="recommendationList" class="recommendation-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="recommendationCardTemplate">
+      <article class="recommendation-card">
+        <img class="poster" alt="" />
+        <div class="recommendation-content">
+          <div class="result-meta"></div>
+          <h3></h3>
+          <p class="overview"></p>
+          <p class="helper-text reason-line"></p>
+          <div class="recommendation-actions">
+            <button class="secondary-btn add-result-btn">加入片单</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./recommendations.js"></script>
+  </body>
+</html>

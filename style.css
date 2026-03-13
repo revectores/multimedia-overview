@@ -212,6 +212,12 @@ button:hover {
   gap: 24px;
 }
 
+.recommendation-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 24px;
+}
+
 .bulk-grid {
   grid-template-columns: 1fr 1fr;
 }
@@ -253,7 +259,8 @@ button:hover {
 }
 
 .search-results,
-.library-list {
+.library-list,
+.recommendation-list {
   display: grid;
   gap: 16px;
 }
@@ -263,7 +270,8 @@ button:hover {
   overflow: hidden;
 }
 
-.result-card {
+.result-card,
+.recommendation-card {
   display: grid;
   grid-template-columns: 96px 1fr;
 }
@@ -276,6 +284,7 @@ button:hover {
 }
 
 .result-content,
+.recommendation-content,
 .library-card {
   padding: 16px;
 }
@@ -451,6 +460,47 @@ button:hover {
   gap: 12px;
 }
 
+.recommendation-sidebar,
+.recommendation-main {
+  min-width: 0;
+}
+
+.recommendation-filters {
+  flex-direction: column;
+  align-items: stretch;
+  margin-bottom: 22px;
+}
+
+.taste-panel {
+  padding: 18px;
+  border: 1px solid rgba(93, 56, 31, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.taste-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendation-card {
+  overflow: hidden;
+  background: rgba(255, 250, 242, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+}
+
+.reason-line {
+  margin: 0 0 14px;
+}
+
+.recommendation-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .bulk-columns {
   align-items: flex-start;
 }
@@ -503,6 +553,7 @@ a {
 @media (max-width: 980px) {
   .hero,
   .main-grid,
+  .recommendation-layout,
   .library-summary {
     grid-template-columns: 1fr;
   }

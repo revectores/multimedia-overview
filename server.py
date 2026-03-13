@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import uuid
+from collections import Counter
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -474,6 +475,293 @@ def update_entry(entry, patch):
     return entry
 
 
+def build_recommendations(media_type="all", limit=18):
+    entries = load_entries()
+    if not entries:
+        raise ValueError("片单为空，先添加几部电影或电视剧再生成推荐。")
+
+    library_keys = {
+        (entry.get("mediaType"), int(entry.get("tmdbId") or 0))
+        for entry in entries
+        if entry.get("tmdbId")
+    }
+    profile = build_taste_profile(entries, media_type)
+    if not profile["seed_entries"]:
+        raise ValueError("缺少可用的种子条目，至少需要一部带 TMDB 信息的作品。")
+
+    candidates = {}
+
+    for seed in profile["seed_entries"][:4]:
+        try:
+            payload = tmdb_request(
+                f"/{seed['mediaType']}/{seed['tmdbId']}/recommendations",
+                {"page": 1},
+                language=seed.get("metadataLanguage") or None,
+            )
+        except ValueError:
+            continue
+        for index, item in enumerate(payload.get("results", [])):
+            candidate_type = seed["mediaType"]
+            if not should_include_candidate(item, candidate_type, media_type, library_keys):
+                continue
+            merge_candidate(
+                candidates,
+                item,
+                candidate_type,
+                score_candidate(
+                    item=item,
+                    candidate_type=candidate_type,
+                    profile=profile,
+                    source="similar",
+                    rank=index,
+                ),
+                reason=f"和《{seed['title']}》相近",
+                source="similar",
+            )
+
+    for candidate_type in resolve_recommendation_types(media_type):
+        discover_params = {
+            "page": 1,
+            "sort_by": "popularity.desc",
+            "vote_count.gte": 80,
+        }
+        if profile["genres_by_type"].get(candidate_type):
+            discover_params["with_genres"] = ",".join(profile["genres_by_type"][candidate_type][:3])
+        country_codes = profile["country_codes_by_type"].get(candidate_type) or profile["country_codes"]
+        if country_codes:
+            discover_params["with_origin_country"] = country_codes[0]
+
+        try:
+            payload = tmdb_request(
+                f"/discover/{candidate_type}",
+                discover_params,
+                language=profile.get("language_hint") or None,
+            )
+        except ValueError:
+            continue
+        for index, item in enumerate(payload.get("results", [])):
+            if not should_include_candidate(item, candidate_type, media_type, library_keys):
+                continue
+            merge_candidate(
+                candidates,
+                item,
+                candidate_type,
+                score_candidate(
+                    item=item,
+                    candidate_type=candidate_type,
+                    profile=profile,
+                    source="taste",
+                    rank=index,
+                ),
+                reason=build_taste_reason(item, candidate_type, profile),
+                source="taste",
+            )
+
+    ranked = sorted(candidates.values(), key=lambda item: item["score"], reverse=True)[:limit]
+    if not ranked:
+        raise ValueError("暂时无法生成推荐，请确认 TMDB_TOKEN 可用并且片单中已有有效条目。")
+    return {
+        "profile": {
+            "entryCount": len(entries),
+            "seedCount": len(profile["seed_entries"]),
+            "preferredGenres": profile["preferred_genres_display"][:5],
+            "preferredCountries": profile["preferred_countries_display"][:4],
+            "preferredTypes": profile["preferred_types_display"],
+        },
+        "results": [serialize_recommendation(candidate) for candidate in ranked],
+    }
+
+
+def build_taste_profile(entries, media_type):
+    allowed_types = set(resolve_recommendation_types(media_type))
+    seed_entries = []
+    genre_counter = Counter()
+    genre_counter_by_type = {kind: Counter() for kind in allowed_types}
+    country_counter = Counter()
+    country_counter_by_type = {kind: Counter() for kind in allowed_types}
+    type_counter = Counter()
+    language_counter = Counter()
+
+    for entry in entries:
+        entry_type = entry.get("mediaType")
+        if entry_type not in allowed_types:
+            continue
+
+        weight = entry_interest_weight(entry)
+        if weight <= 0:
+            continue
+
+        type_counter[entry_type] += weight
+        language_counter[str(entry.get("metadataLanguage") or "").strip()] += weight
+
+        for genre in entry.get("genres", []):
+            genre_counter[genre] += weight
+            genre_counter_by_type[entry_type][genre] += weight
+
+        for code in entry.get("countryCodes", []):
+            country_counter[code] += weight
+            country_counter_by_type[entry_type][code] += weight
+
+        if entry.get("tmdbId"):
+            seed_entries.append(
+                {
+                    "tmdbId": int(entry["tmdbId"]),
+                    "mediaType": entry_type,
+                    "title": entry.get("title", ""),
+                    "metadataLanguage": entry.get("metadataLanguage") or None,
+                    "weight": weight,
+                }
+            )
+
+    seed_entries.sort(key=lambda item: item["weight"], reverse=True)
+    return {
+        "seed_entries": seed_entries,
+        "genre_scores": genre_counter,
+        "genres_by_type": {
+            kind: [name for name, _ in counter.most_common(5)]
+            for kind, counter in genre_counter_by_type.items()
+        },
+        "country_codes": [code for code, _ in country_counter.most_common(4)],
+        "country_codes_by_type": {
+            kind: [code for code, _ in counter.most_common(3)]
+            for kind, counter in country_counter_by_type.items()
+        },
+        "preferred_genres_display": [name for name, _ in genre_counter.most_common(5)],
+        "preferred_countries_display": [
+            format_region_codes([code]) for code, _ in country_counter.most_common(4)
+        ],
+        "preferred_types_display": [
+            "电影" if kind == "movie" else "电视剧" for kind, _ in type_counter.most_common()
+        ],
+        "language_hint": next(
+            (language for language, _ in language_counter.most_common() if language and language != "default"),
+            None,
+        ),
+    }
+
+
+def entry_interest_weight(entry):
+    status_weight = {
+        "completed": 4,
+        "in_progress": 3,
+        "planned": 1,
+    }.get(entry.get("status"), 1)
+    genre_bonus = min(len(entry.get("genres", [])), 3)
+    return status_weight + genre_bonus
+
+
+def resolve_recommendation_types(media_type):
+    return ["movie", "tv"] if media_type == "all" else [media_type]
+
+
+def should_include_candidate(item, candidate_type, media_type, library_keys):
+    tmdb_id = int(item.get("id") or 0)
+    if not tmdb_id:
+        return False
+    if candidate_type not in {"movie", "tv"}:
+        return False
+    if media_type != "all" and candidate_type != media_type:
+        return False
+    return (candidate_type, tmdb_id) not in library_keys
+
+
+def merge_candidate(candidates, item, candidate_type, score, reason, source):
+    key = (candidate_type, int(item["id"]))
+    title = item.get("title") or item.get("name") or item.get("original_title") or item.get("original_name") or "未知标题"
+    existing = candidates.get(key)
+    if existing:
+        existing["score"] += score
+        if reason and reason not in existing["reasons"]:
+            existing["reasons"].append(reason)
+        existing["source_counts"][source] = existing["source_counts"].get(source, 0) + 1
+        return
+
+    candidates[key] = {
+        "id": int(item["id"]),
+        "mediaType": candidate_type,
+        "title": title,
+        "overview": item.get("overview") or "暂无简介",
+        "posterPath": item.get("poster_path") or "",
+        "releaseYear": extract_year(item.get("release_date") or item.get("first_air_date")),
+        "score": score,
+        "genres": item.get("genre_ids", []),
+        "voteAverage": item.get("vote_average") or 0,
+        "popularity": item.get("popularity") or 0,
+        "originalLanguage": normalize_tmdb_language(item.get("original_language")),
+        "reasons": [reason] if reason else [],
+        "source_counts": {source: 1},
+    }
+
+
+def score_candidate(item, candidate_type, profile, source, rank):
+    base = 120 if source == "similar" else 90
+    score = max(base - rank * 4, 12)
+    matched_genres = 0
+    preferred_names = set(profile["genres_by_type"].get(candidate_type, []))
+
+    genre_mapping = fetch_genre_lookup(candidate_type)
+    for genre_id in item.get("genre_ids", []):
+        genre_name = genre_mapping.get(genre_id)
+        if genre_name and genre_name in preferred_names:
+            matched_genres += 1
+
+    score += matched_genres * 18
+    score += min(float(item.get("vote_average") or 0), 10) * 2
+    score += min(float(item.get("popularity") or 0) / 25, 12)
+    return round(score, 2)
+
+
+GENRE_LOOKUP_CACHE = {}
+
+
+def fetch_genre_lookup(media_type):
+    cached = GENRE_LOOKUP_CACHE.get(media_type)
+    if cached is not None:
+        return cached
+    try:
+        payload = tmdb_request(f"/genre/{media_type}/list", language="zh-CN")
+    except ValueError:
+        GENRE_LOOKUP_CACHE[media_type] = {}
+        return {}
+    lookup = {int(item["id"]): item["name"] for item in payload.get("genres", []) if item.get("id")}
+    GENRE_LOOKUP_CACHE[media_type] = lookup
+    return lookup
+
+
+def build_taste_reason(item, candidate_type, profile):
+    genre_mapping = fetch_genre_lookup(candidate_type)
+    matched = [
+        genre_mapping.get(genre_id)
+        for genre_id in item.get("genre_ids", [])
+        if genre_mapping.get(genre_id) in set(profile["genres_by_type"].get(candidate_type, []))
+    ]
+    if matched:
+        return f"符合你常看的{matched[0]}题材"
+
+    country_codes = profile["country_codes_by_type"].get(candidate_type) or profile["country_codes"]
+    if country_codes:
+        return f"贴近你偏好的{format_region_codes([country_codes[0]])}作品"
+
+    return "与你片单的整体兴趣画像接近"
+
+
+def serialize_recommendation(candidate):
+    dominant_source = max(candidate["source_counts"].items(), key=lambda item: item[1])[0]
+    return {
+        "id": candidate["id"],
+        "mediaType": candidate["mediaType"],
+        "title": candidate["title"],
+        "overview": candidate["overview"],
+        "posterPath": candidate["posterPath"],
+        "releaseYear": candidate["releaseYear"],
+        "originalLanguage": candidate["originalLanguage"],
+        "voteAverage": round(float(candidate["voteAverage"] or 0), 1),
+        "score": candidate["score"],
+        "source": dominant_source,
+        "reason": "；".join(candidate["reasons"][:2]) or "与你的片单兴趣相近",
+    }
+
+
 class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
@@ -518,6 +806,22 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/export":
             return self.send_json(export_snapshot())
+
+        if parsed.path == "/api/recommendations":
+            params = parse.parse_qs(parsed.query)
+            media_type = (params.get("mediaType") or ["all"])[0]
+            try:
+                limit = int((params.get("limit") or ["18"])[0] or 18)
+            except ValueError:
+                return self.send_json({"error": "limit 参数无效。"}, status=HTTPStatus.BAD_REQUEST)
+            if media_type not in {"all", "movie", "tv"}:
+                return self.send_json({"error": "推荐类型无效。"}, status=HTTPStatus.BAD_REQUEST)
+            try:
+                return self.send_json(
+                    build_recommendations(media_type=media_type, limit=max(1, min(limit, 30)))
+                )
+            except ValueError as exc:
+                return self.send_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
         if parsed.path == "/api/search":
             params = parse.parse_qs(parsed.query)
