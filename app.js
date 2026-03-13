@@ -2,6 +2,7 @@ const state = {
   mediaType: "movie",
   entries: [],
   hasToken: false,
+  tokenSource: "missing",
   filters: {
     type: "all",
     status: "all",
@@ -9,8 +10,7 @@ const state = {
 };
 
 const els = {
-  tokenInput: document.querySelector("#tmdbToken"),
-  saveTokenBtn: document.querySelector("#saveTokenBtn"),
+  tokenStatus: document.querySelector("#tokenStatus"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
   importJsonBtn: document.querySelector("#importJsonBtn"),
   importJsonInput: document.querySelector("#importJsonInput"),
@@ -35,11 +35,7 @@ async function bootstrap() {
   bindEvents();
 
   try {
-    const settings = await apiGet("/api/settings");
-    state.hasToken = settings.hasToken;
-    els.tokenInput.placeholder = settings.hasToken
-      ? "已保存 Token，如需更新可直接覆盖"
-      : "粘贴 TMDB v4 Read Access Token";
+    applySettings(await apiGet("/api/settings"));
   } catch (error) {
     setSearchMessage(error.message || "初始化失败。");
   }
@@ -48,7 +44,6 @@ async function bootstrap() {
 }
 
 function bindEvents() {
-  els.saveTokenBtn.addEventListener("click", saveToken);
   els.exportJsonBtn.addEventListener("click", exportJson);
   els.importJsonBtn.addEventListener("click", () => els.importJsonInput.click());
   els.importJsonInput.addEventListener("change", importJson);
@@ -83,23 +78,6 @@ async function refreshLibrary() {
   }
 }
 
-async function saveToken() {
-  const token = els.tokenInput.value.trim();
-
-  try {
-    await apiRequest("/api/settings/token", {
-      method: "PUT",
-      body: JSON.stringify({ token }),
-    });
-    state.hasToken = Boolean(token);
-    els.tokenInput.value = "";
-    els.tokenInput.placeholder = token ? "已保存 Token，如需更新可直接覆盖" : "粘贴 TMDB v4 Read Access Token";
-    setSearchMessage(token ? "TMDB Token 已保存到后端。" : "Token 已从后端清空。");
-  } catch (error) {
-    setSearchMessage(error.message || "保存 Token 失败。");
-  }
-}
-
 async function exportJson() {
   try {
     const payload = await apiGet("/api/export");
@@ -128,12 +106,7 @@ async function importJson(event) {
       method: "POST",
       body: text,
     });
-    const settings = await apiGet("/api/settings");
-    state.hasToken = settings.hasToken;
-    els.tokenInput.value = "";
-    els.tokenInput.placeholder = settings.hasToken
-      ? "已保存 Token，如需更新可直接覆盖"
-      : "粘贴 TMDB v4 Read Access Token";
+    applySettings(await apiGet("/api/settings"));
     await refreshLibrary();
     setSearchMessage("JSON 导入完成，已覆盖当前数据。");
   } catch (error) {
@@ -147,7 +120,7 @@ async function handleSearch(event) {
   event.preventDefault();
 
   if (!state.hasToken) {
-    setSearchMessage("请先保存 TMDB Read Access Token。");
+    setSearchMessage("请先通过环境变量 TMDB_TOKEN 启动后端服务。");
     return;
   }
 
@@ -474,6 +447,19 @@ function getPosterUrl(path) {
 
 function setSearchMessage(text) {
   els.searchMessage.textContent = text;
+}
+
+function applySettings(settings) {
+  state.hasToken = Boolean(settings.hasToken);
+  state.tokenSource = settings.tokenSource || "missing";
+  els.tokenStatus.textContent = resolveTokenStatusText();
+}
+
+function resolveTokenStatusText() {
+  if (state.tokenSource === "environment") {
+    return "当前使用服务端环境变量 TMDB_TOKEN。";
+  }
+  return "当前未配置 Token。请在启动服务时设置 TMDB_TOKEN。";
 }
 
 async function apiGet(url) {

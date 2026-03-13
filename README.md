@@ -10,20 +10,20 @@
 - 电视剧支持按季、按集勾选观看进度
 - 数据保存在后端 SQLite 数据库
 - 前端通过本地 API 读写片单和进度
-- 支持将片单与 Token 导出为 JSON，并从 JSON 恢复
+- 支持将片单导出为 JSON，并从 JSON 恢复
 
 ## 使用
 
 1. 在仓库目录运行后端服务。
 2. 打开浏览器访问 `http://127.0.0.1:8010`。
-3. 在页面右上角填入 TMDB `Read Access Token (v4 auth)`。
+3. 通过环境变量 `TMDB_TOKEN` 提供 TMDB `Read Access Token (v4 auth)`。
 4. 搜索电影或电视剧并加入片单。
 5. 可以在右上角使用“导出 JSON / 导入 JSON”做备份和恢复。
 
 ## 本地启动
 
 ```bash
-python3 server.py
+TMDB_TOKEN=your_token_here python3 server.py
 ```
 
 数据库文件会自动创建在 `data/app.db`。

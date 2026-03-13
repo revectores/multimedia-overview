@@ -23,28 +23,19 @@
           </p>
         </div>
         <section class="token-panel">
-          <label class="field-label" for="tmdbToken">TMDB Read Access Token</label>
-          <div class="token-row">
-            <input
-              id="tmdbToken"
-              type="password"
-              placeholder="粘贴 TMDB v4 Read Access Token"
-              autocomplete="off"
-            />
-            <button id="saveTokenBtn" class="primary-btn">保存</button>
-          </div>
+          <p class="field-label">TMDB 配置</p>
           <p class="helper-text">
-            Token 保存在本地后端数据库。申请地址：
+            推荐通过服务端环境变量 `TMDB_TOKEN` 配置。申请地址：
             <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer"
               >TMDB API 设置</a
             >
           </p>
+          <p id="tokenStatus" class="helper-text"></p>
           <div class="data-tools">
             <button id="exportJsonBtn" class="secondary-btn" type="button">导出 JSON</button>
             <button id="importJsonBtn" class="ghost-btn" type="button">导入 JSON</button>
             <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
           </div>
-          <p class="helper-text">导入会覆盖当前数据库中的片单和 Token。</p>
         </section>
       </header>
 

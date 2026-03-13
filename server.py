@@ -25,11 +25,6 @@ def init_db():
     with connect_db() as connection:
         connection.executescript(
             """
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
             CREATE TABLE IF NOT EXISTS entries (
                 id TEXT PRIMARY KEY,
                 media_type TEXT NOT NULL,
@@ -90,35 +85,13 @@ def delete_entry(entry_id):
         connection.commit()
 
 
-def get_setting(key, default=""):
+def get_tmdb_token():
+    return os.environ.get("TMDB_TOKEN", "").strip()
+
+
+def replace_entries(entries):
     with connect_db() as connection:
-        row = connection.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        ).fetchone()
-    return row["value"] if row else default
-
-
-def set_setting(key, value):
-    with connect_db() as connection:
-        connection.execute(
-            """
-            INSERT INTO settings (key, value)
-            VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
-        )
-        connection.commit()
-
-
-def replace_all_data(settings, entries):
-    with connect_db() as connection:
-        connection.execute("DELETE FROM settings")
         connection.execute("DELETE FROM entries")
-        connection.executemany(
-            "INSERT INTO settings (key, value) VALUES (?, ?)",
-            [(key, value) for key, value in settings.items()],
-        )
         for entry in entries:
             entry["status"] = compute_status(entry)
             connection.execute(
@@ -141,9 +114,6 @@ def replace_all_data(settings, entries):
 def export_snapshot():
     return {
         "schemaVersion": 1,
-        "settings": {
-            "tmdbToken": get_setting("tmdb_token"),
-        },
         "entries": load_entries(),
     }
 
@@ -153,15 +123,11 @@ def import_snapshot(payload):
         raise ValueError("导入文件格式无效。")
 
     entries = payload.get("entries")
-    settings = payload.get("settings", {})
-    if not isinstance(entries, list) or not isinstance(settings, dict):
+    if not isinstance(entries, list):
         raise ValueError("导入文件缺少必要字段。")
 
     normalized_entries = [normalize_entry(entry) for entry in entries]
-    normalized_settings = {
-        "tmdb_token": str(settings.get("tmdbToken", "") or "").strip(),
-    }
-    replace_all_data(normalized_settings, normalized_entries)
+    replace_entries(normalized_entries)
 
 
 def normalize_entry(entry):
@@ -239,9 +205,9 @@ def normalize_seasons(seasons):
 
 
 def tmdb_request(path, params=None):
-    token = get_setting("tmdb_token")
+    token = get_tmdb_token()
     if not token:
-        raise ValueError("请先在页面中保存 TMDB Token。")
+        raise ValueError("请先设置 TMDB_TOKEN 环境变量。")
 
     query = params or {}
     query["language"] = "zh-CN"
@@ -440,12 +406,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
-    def do_PUT(self):
-        if self.path.startswith("/api/"):
-            self.handle_api_put()
-            return
-        self.send_error(HTTPStatus.NOT_FOUND)
-
     def do_PATCH(self):
         if self.path.startswith("/api/"):
             self.handle_api_patch()
@@ -462,7 +422,12 @@ class AppHandler(SimpleHTTPRequestHandler):
         parsed = parse.urlparse(self.path)
 
         if parsed.path == "/api/settings":
-            return self.send_json({"hasToken": bool(get_setting("tmdb_token"))})
+            return self.send_json(
+                {
+                    "hasToken": bool(get_tmdb_token()),
+                    "tokenSource": "environment" if get_tmdb_token() else "missing",
+                }
+            )
 
         if parsed.path == "/api/entries":
             return self.send_json(load_entries())
@@ -511,14 +476,6 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         entry = build_movie_entry(tmdb_id) if media_type == "movie" else build_tv_entry(tmdb_id)
         return self.send_json(save_entry(entry), status=HTTPStatus.CREATED)
-
-    def handle_api_put(self):
-        if self.path != "/api/settings/token":
-            return self.send_json({"error": "未找到接口。"}, status=HTTPStatus.NOT_FOUND)
-
-        payload = self.read_json()
-        set_setting("tmdb_token", payload.get("token", "").strip())
-        return self.send_json({"ok": True})
 
     def handle_api_patch(self):
         entry_id = self.path.removeprefix("/api/entries/")
