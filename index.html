@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>观影进展面板</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Media Progress Tracker</p>
+          <h1>观影进展面板</h1>
+          <p class="hero-copy">
+            记录电影和电视剧的观看状态，自动拉取元信息，并对电视剧按季按集追踪。
+          </p>
+        </div>
+        <section class="token-panel">
+          <label class="field-label" for="tmdbToken">TMDB Read Access Token</label>
+          <div class="token-row">
+            <input
+              id="tmdbToken"
+              type="password"
+              placeholder="粘贴 TMDB v4 Read Access Token"
+              autocomplete="off"
+            />
+            <button id="saveTokenBtn" class="primary-btn">保存</button>
+          </div>
+          <p class="helper-text">
+            Token 保存在本地后端数据库。申请地址：
+            <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer"
+              >TMDB API 设置</a
+            >
+          </p>
+          <div class="data-tools">
+            <button id="exportJsonBtn" class="secondary-btn" type="button">导出 JSON</button>
+            <button id="importJsonBtn" class="ghost-btn" type="button">导入 JSON</button>
+            <input id="importJsonInput" type="file" accept="application/json,.json" hidden />
+          </div>
+          <p class="helper-text">导入会覆盖当前数据库中的片单和 Token。</p>
+        </section>
+      </header>
+
+      <main class="main-grid">
+        <section class="panel add-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Add Item</p>
+              <h2>添加电影 / 电视剧</h2>
+            </div>
+            <div class="segmented-control" role="tablist" aria-label="媒体类型">
+              <button class="segment active" data-media-type="movie">电影</button>
+              <button class="segment" data-media-type="tv">电视剧</button>
+            </div>
+          </div>
+
+          <form id="searchForm" class="search-form">
+            <input
+              id="searchInput"
+              type="search"
+              placeholder="输入片名搜索"
+              autocomplete="off"
+              required
+            />
+            <button class="primary-btn" type="submit">搜索</button>
+          </form>
+
+          <div id="searchMessage" class="status-line"></div>
+          <div id="searchResults" class="search-results"></div>
+        </section>
+
+        <section class="panel library-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Library</p>
+              <h2>我的片单</h2>
+            </div>
+            <div class="filters">
+              <select id="typeFilter" aria-label="按类型筛选">
+                <option value="all">全部类型</option>
+                <option value="movie">电影</option>
+                <option value="tv">电视剧</option>
+              </select>
+              <select id="statusFilter" aria-label="按状态筛选">
+                <option value="all">全部状态</option>
+                <option value="planned">想看</option>
+                <option value="in_progress">进行中</option>
+                <option value="completed">已完成</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="libraryStats" class="library-stats"></div>
+          <div id="libraryList" class="library-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <template id="resultCardTemplate">
+      <article class="result-card">
+        <img class="poster" alt="" />
+        <div class="result-content">
+          <div class="result-meta"></div>
+          <h3></h3>
+          <p class="overview"></p>
+          <button class="secondary-btn add-result-btn">加入片单</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="libraryCardTemplate">
+      <article class="library-card">
+        <div class="library-summary">
+          <img class="poster" alt="" />
+          <div class="summary-content">
+            <div class="tag-row"></div>
+            <h3></h3>
+            <p class="meta-line"></p>
+            <p class="overview"></p>
+          </div>
+          <button class="ghost-btn remove-btn" title="删除">删除</button>
+        </div>
+        <div class="progress-block"></div>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
